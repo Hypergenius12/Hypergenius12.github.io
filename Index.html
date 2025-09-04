@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Link → IFrame Preview</title>
+  <meta name="description" content="Paste any link and generate a sandboxed iframe preview. Includes share, history, embed code, and fallback." />
+
+  <!-- Basic styling - modern clean UI (no external libs) -->
+  <style>
+    :root{
+      --bg:#0f1724;
+      --card:#0b1220;
+      --muted:#94a3b8;
+      --accent1:#7c3aed;
+      --accent2:#06b6d4;
+      --glass: rgba(255,255,255,0.03);
+      --radius:14px;
+      --gap:14px;
+      --fg:#e6eef8;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+      background: linear-gradient(180deg,#021024 0%, #07122a 40%, #071428 100%);
+      color:var(--fg);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      padding:28px;
+      display:flex;
+      align-items:flex-start;
+      justify-content:center;
+      gap:20px;
+      min-height:100vh;
+    }
+
+    .container{
+      width:1100px;
+      max-width:100%;
+      display:grid;
+      grid-template-columns: 420px 1fr;
+      gap:24px;
+      align-items:start;
+    }
+
+    /* LEFT PANE - controls */
+    .panel{
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius:var(--radius);
+      padding:18px;
+      box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+      border:1px solid rgba(255,255,255,0.03);
+    }
+    h1{
+      margin:0 0 8px 0;
+      font-size:20px;
+      letter-spacing:-0.2px;
+    }
+    p.lead{ margin:0 0 14px 0; color:var(--muted); font-size:13px }
+
+    label{display:block; font-size:13px; margin-bottom:6px; color:var(--muted)}
+
+    .input-row{
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    input[type="text"]{
+      flex:1;
+      padding:12px 12px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,0.04);
+      background:var(--glass);
+      color:var(--fg);
+      outline:none;
+      font-size:14px;
+    }
+    input[type="text"]::placeholder{ color: rgba(255,255,255,0.35) }
+
+    button{
+      background:linear-gradient(90deg,var(--accent1),var(--accent2));
+      border:0;
+      padding:10px 12px;
+      border-radius:10px;
+      color:white;
+      cursor:pointer;
+      font-weight:600;
+      box-shadow: 0 6px 20px rgba(12,12,30,0.45);
+      transition:transform .12s ease, box-shadow .12s ease, opacity .12s;
+    }
+    button.secondary{
+      background:transparent;
+      border:1px solid rgba(255,255,255,0.06);
+      color:var(--fg);
+      box-shadow:none;
+      font-weight:600;
+    }
+    button:active{ transform:translateY(1px) }
+
+    .meta{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:12px;
+    }
+    .pill{
+      background:rgba(255,255,255,0.02);
+      padding:8px 10px;
+      border-radius:10px;
+      font-size:13px;
+      color:var(--muted);
+      border:1px solid rgba(255,255,255,0.02);
+    }
+
+    .history{
+      margin-top:16px;
+    }
+    .history h3{ margin:10px 0 8px 0; font-size:15px }
+    .history-list{ display:flex; flex-direction:column; gap:8px; max-height:260px; overflow:auto; padding-right:6px }
+    .history-item{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:8px;
+      border-radius:8px;
+      background:rgba(255,255,255,0.01);
+      border:1px solid rgba(255,255,255,0.02);
+    }
+    .history-item a{ color:var(--fg); text-decoration:none; flex:1; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+    .history-actions button{ margin-left:6px }
+
+    .small{ font-size:12px; color:var(--muted) }
+
+    /* RIGHT PANE - preview */
+    .preview {
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      min-height:520px;
+    }
+    .preview-card{
+      border-radius:var(--radius);
+      overflow:hidden;
+      background:#081025;
+      border:1px solid rgba(0,0,0,0.2);
+      display:flex;
+      flex-direction:column;
+      height:620px;
+    }
+    .preview-toolbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:12px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));
+      border-bottom:1px solid rgba(255,255,255,0.02);
+    }
+    .preview-toolbar .left{ display:flex; gap:10px; align-items:center }
+    .status-dot{
+      width:10px; height:10px; border-radius:999px; background:orange;
+      box-shadow:0 0 8px rgba(255,140,0,0.2)
+    }
+    .iframe-wrap{
+      position:relative;
+      flex:1;
+      background: #071427;
+      min-height:420px;
+    }
+    iframe{
+      width:100%; height:100%; border:0; display:block;
+    }
+    .overlay-message{
+      position:absolute; inset:12px; border-radius:10px;
+      display:flex; align-items:center; justify-content:center;
+      text-align:center; padding:20px;
+      background:linear-gradient(180deg, rgba(2,6,23,0.6), rgba(2,6,23,0.75));
+      color:var(--muted);
+      font-size:15px;
+    }
+    .loader{
+      width:40px; height:40px; border-radius:50%;
+      border:4px solid rgba(255,255,255,0.06);
+      border-top-color:var(--accent2);
+      animation:spin 1s linear infinite;
+      margin-right:12px;
+    }
+    @keyframes spin{ to{ transform:rotate(360deg) } }
+
+    footer.small{ color:var(--muted); font-size:12px; margin-top:8px }
+
+    /* responsive */
+    @media (max-width:980px){
+      .container{ grid-template-columns: 1fr; gap:14px; padding:0 6px }
+      .preview-card{ height:520px }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" role="main">
+    <!-- LEFT: Controls -->
+    <aside class="panel" aria-labelledby="title">
+      <h1 id="title">Link → IFrame</h1>
+      <p class="lead">Paste a URL and preview it inside a sandboxed iframe. Many sites block framing — fallback options included.</p>
+
+      <label for="urlInput">Enter URL</label>
+      <div class="input-row">
+        <input id="urlInput" type="text" placeholder="https://example.com or example.com" aria-label="Enter a URL to preview" autocomplete="off" />
+        <button id="goBtn" title="Preview (Enter)">Preview</button>
+      </div>
+
+      <div class="meta" aria-hidden="false">
+        <div class="pill small" id="lastAction">No preview yet</div>
+        <div class="pill small" id="schemeInfo">Allowed schemes: http(s)</div>
+      </div>
+
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="secondary" id="copyEmbed">Copy embed code</button>
+        <button class="secondary" id="openNew">Open in new tab</button>
+        <button id="clearHistory" class="secondary">Clear history</button>
+      </div>
+
+      <div class="history" aria-live="polite">
+        <h3>History</h3>
+        <div class="history-list" id="historyList" tabindex="0" aria-label="Previously viewed URLs"></div>
+      </div>
+
+      <footer class="small">
+        Tip: press <strong>Enter</strong> to preview. Use the share button in your browser to copy this page's URL (it encodes current preview).
+      </footer>
+    </aside>
+
+    <!-- RIGHT: Preview -->
+    <section class="preview" aria-label="Preview area">
+      <div class="preview-card" role="region" aria-labelledby="previewLabel">
+        <div class="preview-toolbar">
+          <div class="left">
+            <div class="status-dot" id="statusDot" aria-hidden="true"></div>
+            <div>
+              <div id="previewLabel" style="font-weight:600; font-size:14px">No site loaded</div>
+              <div id="previewSub" class="small">Paste a URL and click Preview</div>
+            </div>
+          </div>
+
+          <div>
+            <button class="secondary" id="reloadBtn" title="Reload iframe">Reload</button>
+            <button id="shareBtn" title="Copy preview link">Share</button>
+          </div>
+        </div>
+
+        <div class="iframe-wrap" id="iframeWrap" aria-live="polite">
+          <!-- iframe will be inserted here -->
+          <div class="overlay-message" id="idleOverlay" style="display:flex; flex-direction:row; gap:12px;">
+            <div class="loader" aria-hidden="true"></div>
+            <div>
+              Ready — paste a URL on the left to preview here.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:12px; align-items:center; justify-content:space-between">
+        <div class="small" id="notes">Preview uses <code>iframe sandbox</code> (scripts allowed but isolated — no same-origin).</div>
+        <div>
+          <button class="secondary" id="toggleSandbox">Toggle sandbox scripts</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- SCRIPT: behavior -->
+  <script>
+    /********************************************************************
+     * Link → IFrame Preview
+     * - Validates/normalizes URLs
+     * - Blocks unsafe schemes (javascript:, data:, file:)
+     * - Uses a sandboxed iframe with safe attributes
+     * - Saves history to localStorage, supports shareable ?url=...
+     * - Provides embed code and fallback options
+     ********************************************************************/
+
+    (function(){
+      const input = document.getElementById('urlInput');
+      const goBtn = document.getElementById('goBtn');
+      const iframeWrap = document.getElementById('iframeWrap');
+      const idleOverlay = document.getElementById('idleOverlay');
+      const previewLabel = document.getElementById('previewLabel');
+      const previewSub = document.getElementById('previewSub');
+      const statusDot = document.getElementById('statusDot');
+      const copyEmbed = document.getElementById('copyEmbed');
+      const openNew = document.getElementById('openNew');
+      const reloadBtn = document.getElementById('reloadBtn');
+      const shareBtn = document.getElementById('shareBtn');
+      const historyList = document.getElementById('historyList');
+      const clearHistory = document.getElementById('clearHistory');
+      const lastAction = document.getElementById('lastAction');
+      const schemeInfo = document.getElementById('schemeInfo');
+      const toggleSandbox = document.getElementById('toggleSandbox');
+
+      const STORAGE_KEY = 'iframe_preview_history_v1';
+      const MAX_HISTORY = 50;
+
+      // sandbox config
+      let sandboxAllowScripts = true; // toggleable by user
+      const defaultSandboxTokens = ['allow-forms','allow-popups']; // safe baseline
+
+      // state
+      let currentUrl = null;
+      let iframeEl = null;
+      let loadTimer = null;
+
+      // helper: show status
+      function setStatus(text, color){
+        previewSub.textContent = text;
+        previewSub.style.color = color || '';
+        lastAction.textContent = text;
+        statusDot.style.background = color || 'orange';
+        statusDot.style.boxShadow = color ? `0 0 12px ${color}` : '';
+      }
+
+      // Validate and normalize user input into a safe URL string.
+      function normalizeUrl(raw){
+        raw = (raw||'').trim();
+        if(!raw) throw new Error('Empty URL');
+
+        // block hazardous schemes explicitly
+        const lower = raw.toLowerCase();
+        if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('file:') || lower.startsWith('blob:') || lower.startsWith('about:')) {
+          throw new Error('URL uses a blocked scheme (javascript:, data:, file:, blob:, about:).');
+        }
+
+        // If user didn't type protocol, assume https
+        let candidate = raw;
+        if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw)) {
+          candidate = 'https://' + raw;
+        }
+
+        try {
+          const u = new URL(candidate);
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+            throw new Error('Only http(s) URLs are supported.');
+          }
+          // Remove username/password for safety in preview
+          u.username = '';
+          u.password = '';
+          return u.toString();
+        } catch(e){
+          throw new Error('Invalid URL.');
+        }
+      }
+
+      // Save to history (localStorage)
+      function saveHistory(url){
+        try{
+          const raw = localStorage.getItem(STORAGE_KEY);
+          const list = raw ? JSON.parse(raw) : [];
+          // de-dupe: move to front if exists
+          const filtered = list.filter(i => i.url !== url);
+          filtered.unshift({ url, ts: Date.now() });
+          if (filtered.length > MAX_HISTORY) filtered.length = MAX_HISTORY;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+          renderHistory();
+        } catch(e){}
+      }
+      function renderHistory(){
+        historyList.innerHTML = '';
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const list = raw ? JSON.parse(raw) : [];
+        if (!list.length){
+          historyList.innerHTML = '<div class="small" style="padding:8px;color:var(--muted)">No history yet.</div>';
+          return;
+        }
+        for(const item of list){
+          const row = document.createElement('div');
+          row.className = 'history-item';
+          const link = document.createElement('a');
+          link.href = '#';
+          link.textContent = item.url;
+          link.title = item.url;
+          link.addEventListener('click', e => {
+            e.preventDefault();
+            input.value = item.url;
+            preview(item.url);
+          });
+
+          const actions = document.createElement('div');
+          actions.className = 'history-actions';
+          const openBtn = document.createElement('button');
+          openBtn.className = 'secondary';
+          openBtn.textContent = 'Open';
+          openBtn.title = 'Open in new tab';
+          openBtn.addEventListener('click', () => window.open(item.url, '_blank', 'noopener'));
+
+          const delBtn = document.createElement('button');
+          delBtn.className = 'secondary';
+          delBtn.textContent = 'X';
+          delBtn.title = 'Remove';
+          delBtn.addEventListener('click', () => {
+            removeFromHistory(item.url);
+          });
+
+          actions.appendChild(openBtn);
+          actions.appendChild(delBtn);
+
+          row.appendChild(link);
+          row.appendChild(actions);
+          historyList.appendChild(row);
+        }
+      }
+      function removeFromHistory(url){
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const list = raw ? JSON.parse(raw) : [];
+        const newList = list.filter(i => i.url !== url);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newList));
+        renderHistory();
+      }
+      clearHistory.addEventListener('click', () => {
+        localStorage.removeItem(STORAGE_KEY);
+        renderHistory();
+      });
+
+      // Create and inject iframe with sandbox attributes
+      function buildIframe(url){
+        // remove existing
+        if (iframeEl){
+          try { iframeEl.remove(); } catch(e) {}
+          iframeEl = null;
+        }
+
+        const frame = document.createElement('iframe');
+        frame.setAttribute('src', url);
+        frame.setAttribute('title', 'Preview of ' + url);
+        frame.setAttribute('loading', 'lazy');
+        frame.setAttribute('referrerpolicy', 'no-referrer');
+
+        // Compose sandbox tokens
+        const tokens = [...defaultSandboxTokens];
+        if (sandboxAllowScripts) tokens.push('allow-scripts');
+        // IMPORTANT: intentionally do NOT add allow-same-origin to maintain isolation.
+        // This prevents framed content from accessing cookies/localStorage of the site and prevents it from accessing parent.
+        frame.setAttribute('sandbox', tokens.join(' '));
+
+        // Styling - fill the area
+        frame.style.width = '100%';
+        frame.style.height = '100%';
+        frame.style.border = 'none';
+        frame.style.display = 'block';
+        frame.style.background = 'white';
+
+        // Attach load handler: we use this to stop loader; note: load may still fire when site refuses to frame;
+        frame.addEventListener('load', () => {
+          clearTimeout(loadTimer);
+          setStatus('Loaded: ' + url, '#06d6a0');
+          hideOverlay();
+        });
+
+        // Attach a simple error fallback via timeout (not all blocking produces an error event)
+        loadTimer = setTimeout(() => {
+          // After timeout, if still not "loaded", show fallback message.
+          setStatus('Preview may be blocked by the site (X-Frame-Options or Content Security Policy).', '#f97316');
+          showBlockedOverlay(url);
+        }, 9000); // 9s fallback
+
+        iframeEl = frame;
+        return frame;
+      }
+
+      function showOverlay(msg){
+        idleOverlay.style.display = 'flex';
+        idleOverlay.innerHTML = '<div class="loader" aria-hidden="true"></div><div>' + msg + '</div>';
+      }
+      function hideOverlay(){
+        idleOverlay.style.display = 'none';
+      }
+
+      function showBlockedOverlay(url){
+        // Display a clear fallback UI with options
+        idleOverlay.style.display = 'flex';
+        idleOverlay.innerHTML = `
+          <div style="width:100%;max-width:720px">
+            <div style="font-weight:700; margin-bottom:8px">This page cannot be embedded</div>
+            <div class="small" style="margin-bottom:12px">Many websites forbid framing using security headers (X-Frame-Options or CSP). You can open the page in a new tab or copy an embed snippet to try in your own site.</div>
+            <div style="display:flex; gap:8px; justify-content:center">
+              <button id="fallbackOpen" style="padding:10px 12px;border-radius:10px">Open in new tab</button>
+              <button id="fallbackCopy" class="secondary">Copy embed code</button>
+            </div>
+          </div>
+        `;
+        // hook fallback buttons
+        setTimeout(() => {
+          const fallbackOpen = document.getElementById('fallbackOpen');
+          const fallbackCopy = document.getElementById('fallbackCopy');
+          if (fallbackOpen) fallbackOpen.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+          if (fallbackCopy) fallbackCopy.addEventListener('click', () => copyToClipboard(getEmbedCode(url)));
+        }, 20);
+      }
+
+      // Persist current url into location.search so share works
+      function pushSharedUrl(url){
+        try {
+          const u = new URL(window.location.href);
+          u.searchParams.set('url', url);
+          window.history.replaceState({}, '', u.toString());
+        } catch(e){}
+      }
+
+      // Generate iframe embed code for copying
+      function getEmbedCode(url){
+        const tokens = [...defaultSandboxTokens];
+        if (sandboxAllowScripts) tokens.push('allow-scripts');
+        const sandboxAttr = tokens.join(' ');
+        return `<iframe src="${escapeHtml(url)}" sandbox="${sandboxAttr}" loading="lazy" style="width:100%;height:500px;border:0;"></iframe>`;
+      }
+
+      // Escape for safe insertion into textareas/snippets
+      function escapeHtml(s){
+        return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+      }
+
+      // Main preview routine
+      async function preview(raw){
+        try{
+          const norm = normalizeUrl(raw);
+          currentUrl = norm;
+          setStatus('Loading: ' + norm, '#81a1ff');
+          previewLabel.textContent = norm;
+          showOverlay('Loading preview...');
+          pushSharedUrl(norm);
+          saveHistory(norm);
+
+          // Build iframe and insert
+          const frame = buildIframe(norm);
+          // clear wrap then append
+          iframeWrap.innerHTML = '';
+          iframeWrap.appendChild(frame);
+          // show small toolbar change
+          previewLabel.textContent = norm;
+          copyEmbed.disabled = false;
+        } catch(err){
+          // show error
+          setStatus('Error: ' + (err.message || err), '#ef4444');
+          showOverlay(err.message || 'Invalid URL');
+          currentUrl = null;
+        }
+      }
+
+      // Helpers: copy to clipboard
+      async function copyToClipboard(text){
+        try{
+          await navigator.clipboard.writeText(text);
+          setStatus('Copied to clipboard', '#06d6a0');
+        } catch(e){
+          setStatus('Clipboard failed — select and copy manually', '#f97316');
+        }
+      }
+
+      // Button wiring
+      goBtn.addEventListener('click', () => preview(input.value));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') preview(input.value);
+      });
+
+      copyEmbed.addEventListener('click', () => {
+        if (!currentUrl) { setStatus('No preview to embed', '#ef4444'); return; }
+        copyToClipboard(getEmbedCode(currentUrl));
+      });
+
+      openNew.addEventListener('click', () => {
+        if (!input.value && !currentUrl) { setStatus('No URL to open', '#ef4444'); return; }
+        const target = currentUrl || input.value;
+        try{ window.open(target, '_blank', 'noopener'); } catch(e){ setStatus('Unable to open window', '#ef4444'); }
+      });
+
+      reloadBtn.addEventListener('click', () => {
+        if (!iframeEl || !currentUrl) { setStatus('Nothing to reload', '#ef4444'); return; }
+        // reload by resetting src
+        const src = iframeEl.getAttribute('src');
+        iframeEl.setAttribute('src', 'about:blank');
+        setTimeout(()=> iframeEl.setAttribute('src', src), 50);
+        setStatus('Reloading...', '#81a1ff');
+        showOverlay('Reloading preview...');
+        loadTimer = setTimeout(() => showBlockedOverlay(src), 9000);
+      });
+
+      shareBtn.addEventListener('click', async () => {
+        if (!currentUrl) { setStatus('Nothing to share', '#ef4444'); return; }
+        const shareUrl = window.location.href;
+        // try Web Share API
+        if (navigator.share){
+          try{
+            await navigator.share({ title: 'IFrame preview', text: 'Previewing: ' + currentUrl, url: shareUrl });
+            setStatus('Shared', '#06d6a0');
+            return;
+          } catch(e){}
+        }
+        // fallback to clipboard
+        copyToClipboard(shareUrl);
+      });
+
+      toggleSandbox.addEventListener('click', () => {
+        sandboxAllowScripts = !sandboxAllowScripts;
+        toggleSandbox.textContent = sandboxAllowScripts ? 'Disable sandbox scripts' : 'Enable sandbox scripts';
+        setStatus('Sandbox scripts ' + (sandboxAllowScripts ? 'enabled' : 'disabled'), '#94a3b8');
+        // if currently previewing, rebuild iframe to apply new sandbox
+        if (currentUrl) preview(currentUrl);
+      });
+
+      // On load, render history and check for ?url= param
+      function init(){
+        renderHistory();
+
+        // If URL present in query, auto-preview
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const u = params.get('url');
+          if (u) {
+            input.value = u;
+            preview(u);
+          }
+        } catch(e){}
+
+        // keyboard shortcut: Ctrl/Cmd+K focus input
+        window.addEventListener('keydown', (e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            input.focus();
+            input.select();
+          }
+        });
+      }
+
+      // Utility: small HTML escape shim for embed code
+      // (already defined above)
+
+      init();
+    })();
+  </script>
+</body>
+</html>
